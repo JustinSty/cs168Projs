@@ -31,8 +31,6 @@ class LearningSwitch (api.Entity):
     self.table = {}
 
 
-    pass
-
   def handle_port_down (self, port):
     """
     Called when a port goes down (because a link is removed)
@@ -42,7 +40,7 @@ class LearningSwitch (api.Entity):
     for key in self.table.keys():
       if self.table[key] == port:
         del self.table[key]
-    pass
+
 
   def handle_rx (self, packet, in_port):
     """

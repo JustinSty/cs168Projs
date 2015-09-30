@@ -22,6 +22,16 @@ class DVRouter (basics.DVRouterBase):
     You probably want to do some additional initialization here.
     """
     self.start_timer() # Starts calling handle_timer() at correct rate
+    self.table ={} # Each entry in form of [latency(cost), from_which_port, expire_time]
+
+
+  def update(self, dst, cost):
+    self.table[dst] = [cost, port, 0]
+
+
+  def expire(self, dst):
+    del self.table[dst]
+
 
   def handle_link_up (self, port, latency):
     """
@@ -48,13 +58,16 @@ class DVRouter (basics.DVRouterBase):
     """
     #self.log("RX %s on %s (%s)", packet, port, api.current_time())
     if isinstance(packet, basics.RoutePacket):
-      pass
+      dst = packet.destination
+      cost = packet.latency
+      if not dst in self.table or self.table[dst][0] > cost:
+        self.update(dst, cost)
     elif isinstance(packet, basics.HostDiscoveryPacket):
       pass
     else:
       # Totally wrong behavior for the sake of demonstration only: send
       # the packet back to where it came from!
-      self.send(packet, port=port)
+      self.send(packet, port=self.table[packet.dst][1])
 
   def handle_timer (self):
     """
@@ -63,3 +76,19 @@ class DVRouter (basics.DVRouterBase):
     When called, your router should send tables to neighbors.  It also might
     not be a bad place to check for whether any entries have expired.
     """
+    # check if any entry expire
+    for entry in self.table:
+      self.table[entry][2] += DEFAULT_TIMER_INTERVAL
+      if self.table[entry][2] >= 15:
+        self.expired(entry)
+    # send table to all neighbour
+    for entry in self.table:
+      p = basics.RoutePacket(entry, self.table[entry][0])
+      self.send(p, flood=True)
+
+
+
+
+
+
+
