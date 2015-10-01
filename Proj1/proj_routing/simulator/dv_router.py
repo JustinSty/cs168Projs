@@ -100,8 +100,9 @@ class DVRouter (basics.DVRouterBase):
         expire.append(dst)
 
     for dst in expire:
-      del self.table2[dst]
-      print("del")               #problem at del, how to invoke recompute
+      if not self.table1[self.table2[dst][0]] == self.table2[dst][1]:
+        del self.table2[dst]
+      print("del")             
     # send table to all neighbour
 
     for dst in self.table2.keys():
