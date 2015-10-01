@@ -46,6 +46,10 @@ class DVRouter (basics.DVRouterBase):
 
     The port number used by the link is passed in.
     """
+    for dst in self.table.keys():
+      if self.table[dst][1] == port:
+        del self.table[dst]
+
 
   def handle_rx (self, packet, port):
     """
