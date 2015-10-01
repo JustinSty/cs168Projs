@@ -74,7 +74,7 @@ class DVRouter (basics.DVRouterBase):
     elif isinstance(packet, basics.HostDiscoveryPacket):
       print('HostDiscoveryPacket')
       self.table2[packet.src] = [port, self.table1[port], 0]    #???
-      
+
       for tar_dst in self.table2.keys():
         for tar_port in self.table1.keys():
           if not tar_port == port:
@@ -94,13 +94,14 @@ class DVRouter (basics.DVRouterBase):
     """
     # check if any entry expire.
     expire = []
-    for entry in self.table2:
-      self.table2[entry][2] += self.DEFAULT_TIMER_INTERVAL
-      if self.table2[entry][2] >= 15:
-        expire.append(entry)
+    for dst in self.table2:
+      self.table2[dst][2] += self.DEFAULT_TIMER_INTERVAL
+      if self.table2[dst][2] >= 15:
+        expire.append(dst)
 
-    for entry in expire:
-      del self.table2[entry]
+    for dst in expire:
+      del self.table2[dst]
+      print("del")               #problem at del, how to invoke recompute
     # send table to all neighbour
 
     for dst in self.table2.keys():
