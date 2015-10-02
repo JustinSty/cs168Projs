@@ -22,15 +22,9 @@ class DVRouter (basics.DVRouterBase):
     You probably want to do some additional initialization here.
     """
     self.start_timer() # Starts calling handle_timer() at correct rate
-    self.table ={} # Each entry in form of [latency(cost), from_which_port, expire_time]
+    self.table1 = {} # port:ping to neighbour
+    self.table2 = {} # dst:[port, total cost, time]
 
-
-  def update(self, dst, cost):
-    self.table[dst] = [cost, port, 0]
-
-
-  def expire(self, dst):
-    del self.table[dst]
 
 
   def handle_link_up (self, port, latency):
@@ -39,6 +33,7 @@ class DVRouter (basics.DVRouterBase):
 
     The port attached to the link and the link latency are passed in.
     """
+    self.table1[port] = latency;
 
   def handle_link_down (self, port):
     """
@@ -46,9 +41,8 @@ class DVRouter (basics.DVRouterBase):
 
     The port number used by the link is passed in.
     """
-    for dst in self.table.keys():
-      if self.table[dst][1] == port:
-        del self.table[dst]
+    if port in self.table1.keys():
+      del self.table1[port]
 
 
   def handle_rx (self, packet, port):
@@ -63,15 +57,35 @@ class DVRouter (basics.DVRouterBase):
     #self.log("RX %s on %s (%s)", packet, port, api.current_time())
     if isinstance(packet, basics.RoutePacket):
       dst = packet.destination
-      cost = packet.latency
-      if not dst in self.table or self.table[dst][0] > cost:
-        self.update(dst, cost)
+      cost = packet.latency 
+      #assuming link must be recorded already
+      if (dst not in self.table2.keys()) or ((self.table1[port] + cost) < self.table2[dst][1]):
+        self.table2[dst] = [port, self.table1[port] + cost, 0]
+
+      #send table to all neighbours except PORT
+      #for tar_dst in self.table2.keys():
+        for tar_port in self.table1.keys():
+          if not tar_port == port:
+            p = basics.RoutePacket(dst, self.table2[dst][1])
+            self.send(p, tar_port)
+
     elif isinstance(packet, basics.HostDiscoveryPacket):
-      pass
+      print('HostDiscoveryPacket')
+      self.table2[packet.src] = [port, self.table1[port], 0]    #???
+
+      #send table to all neighbours except PORT
+      for tar_dst in self.table2.keys():
+        for tar_port in self.table1.keys():
+          if not tar_port == port:
+            p = basics.RoutePacket(tar_dst, self.table2[tar_dst][1])
+            self.send(p, tar_port)
     else:
       # Totally wrong behavior for the sake of demonstration only: send
       # the packet back to where it came from!
-      self.send(packet, port=self.table[packet.dst][1])
+      if (packet.dst in self.table2.keys()):
+        self.send(packet, self.table2[packet.dst][0])
+      else:
+        self.send(packet, port)
 
   def handle_timer (self):
     """
@@ -80,17 +94,25 @@ class DVRouter (basics.DVRouterBase):
     When called, your router should send tables to neighbors.  It also might
     not be a bad place to check for whether any entries have expired.
     """
-    # check if any entry expire
-    for entry in self.table:
-      self.table[entry][2] += DEFAULT_TIMER_INTERVAL
-      if self.table[entry][2] >= 15:
-        self.expired(entry)
+    # check if any entry expire.
+    expire = []
+    for dst in self.table2:
+      self.table2[dst][2] += self.DEFAULT_TIMER_INTERVAL
+      if self.table2[dst][2] >= 15:
+        expire.append(dst)
+
+    for dst in expire:
+      if self.table1[self.table2[dst][0]] == self.table2[dst][1]:
+        self.table2[dst][2] = 0
+      else:
+        del self.table2[dst]
+
+        #print("del")             
     # send table to all neighbour
-    for entry in self.table:
-      p = basics.RoutePacket(entry, self.table[entry][0])
-      self.send(p, flood=True)
 
-
+    for dst in self.table2.keys():
+      p = basics.RoutePacket(dst, self.table2[dst][1])
+      self.send(p, flood = True)
 
 
 
