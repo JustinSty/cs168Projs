@@ -58,8 +58,6 @@ class DVRouter (basics.DVRouterBase):
     if isinstance(packet, basics.RoutePacket):
       dst = packet.destination
       cost = packet.latency 
-      #print(port in self.table1.keys())
-      #print(dst in self.table2.keys())     
       #assuming link must be recorded already
       if (dst not in self.table2.keys()) or ((self.table1[port] + cost) < self.table2[dst][1]):
         self.table2[dst] = [port, self.table1[port] + cost, 0]
@@ -83,7 +81,10 @@ class DVRouter (basics.DVRouterBase):
     else:
       # Totally wrong behavior for the sake of demonstration only: send
       # the packet back to where it came from!
-      self.send(packet, port)
+      if (packet.dst in self.table2.keys()):
+        self.send(packet, self.table2[packet.dst])
+      else:
+        self.send(packet, port)
 
   def handle_timer (self):
     """
@@ -97,11 +98,15 @@ class DVRouter (basics.DVRouterBase):
     for dst in self.table2:
       self.table2[dst][2] += self.DEFAULT_TIMER_INTERVAL
       if self.table2[dst][2] >= 15:
-        expire.append(dst)
+        #expire.append(dst)
+        pass
 
     for dst in expire:
-      if not self.table1[self.table2[dst][0]] == self.table2[dst][1]:
+      if self.table1[self.table2[dst][0]] == self.table2[dst][1]:
+        self.table2[dst][2] = 0
+      else:
         del self.table2[dst]
+
       print("del")             
     # send table to all neighbour
 
