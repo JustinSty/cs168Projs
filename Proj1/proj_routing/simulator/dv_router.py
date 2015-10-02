@@ -22,8 +22,8 @@ class DVRouter (basics.DVRouterBase):
     You probably want to do some additional initialization here.
     """
     self.start_timer() # Starts calling handle_timer() at correct rate
-    self.table1 = {} # port:ping to neighbour
-    self.table2 = {} # dst:[port, total cost, time]
+    self.neighbour = {} # port:ping to neighbour
+    self.table = {} # dst:[port, total cost, time]
 
 
 
@@ -33,7 +33,7 @@ class DVRouter (basics.DVRouterBase):
 
     The port attached to the link and the link latency are passed in.
     """
-    self.table1[port] = latency;
+    self.neighbour[port] = latency;
 
   def handle_link_down (self, port):
     """
@@ -41,8 +41,18 @@ class DVRouter (basics.DVRouterBase):
 
     The port number used by the link is passed in.
     """
-    if port in self.table1.keys():
-      del self.table1[port]
+    if port in self.neighbour.keys():
+      del self.neighbour[port]
+    remove = []
+    for dst in self.table:
+      if self.table[dst][0] == port:
+        remove.append(dst)
+    for dst in remove:
+      del self.table[dst]
+
+    for dst in self.table.keys():
+      p = basics.RoutePacket(dst, self.table[dst][1])
+      self.send(p, flood=True)
 
 
   def handle_rx (self, packet, port):
@@ -59,31 +69,31 @@ class DVRouter (basics.DVRouterBase):
       dst = packet.destination
       cost = packet.latency 
       #assuming link must be recorded already
-      if (dst not in self.table2.keys()) or ((self.table1[port] + cost) < self.table2[dst][1]):
-        self.table2[dst] = [port, self.table1[port] + cost, 0]
+      if (dst not in self.table.keys()) or ((self.neighbour[port] + cost) < self.table[dst][1]):
+        self.table[dst] = [port, self.neighbour[port] + cost, 0]
 
       #send table to all neighbours except PORT
-      #for tar_dst in self.table2.keys():
-        for tar_port in self.table1.keys():
+      #for tar_dst in self.table.keys():
+        for tar_port in self.neighbour.keys():
           if not tar_port == port:
-            p = basics.RoutePacket(dst, self.table2[dst][1])
+            p = basics.RoutePacket(dst, self.table[dst][1])
             self.send(p, tar_port)
 
     elif isinstance(packet, basics.HostDiscoveryPacket):
       print('HostDiscoveryPacket')
-      self.table2[packet.src] = [port, self.table1[port], 0]    #???
+      self.table[packet.src] = [port, self.neighbour[port], 0]    #???
 
       #send table to all neighbours except PORT
-      for tar_dst in self.table2.keys():
-        for tar_port in self.table1.keys():
+      for tar_dst in self.table.keys():
+        for tar_port in self.neighbour.keys():
           if not tar_port == port:
-            p = basics.RoutePacket(tar_dst, self.table2[tar_dst][1])
+            p = basics.RoutePacket(tar_dst, self.table[tar_dst][1])
             self.send(p, tar_port)
     else:
       # Totally wrong behavior for the sake of demonstration only: send
       # the packet back to where it came from!
-      if (packet.dst in self.table2.keys()):
-        self.send(packet, self.table2[packet.dst][0])
+      if (packet.dst in self.table.keys()):
+        self.send(packet, self.table[packet.dst][0])
       else:
         self.send(packet, port)
 
@@ -96,22 +106,22 @@ class DVRouter (basics.DVRouterBase):
     """
     # check if any entry expire.
     expire = []
-    for dst in self.table2:
-      self.table2[dst][2] += self.DEFAULT_TIMER_INTERVAL
-      if self.table2[dst][2] >= 15:
+    for dst in self.table:
+      self.table[dst][2] += self.DEFAULT_TIMER_INTERVAL
+      if self.table[dst][2] >= 15:
         expire.append(dst)
 
     for dst in expire:
-      if self.table1[self.table2[dst][0]] == self.table2[dst][1]:
-        self.table2[dst][2] = 0
+      if self.neighbour[self.table[dst][0]] == self.table[dst][1]:
+        self.table[dst][2] = 0
       else:
-        del self.table2[dst]
+        del self.table[dst]
 
         #print("del")             
     # send table to all neighbour
 
-    for dst in self.table2.keys():
-      p = basics.RoutePacket(dst, self.table2[dst][1])
+    for dst in self.table.keys():
+      p = basics.RoutePacket(dst, self.table[dst][1])
       self.send(p, flood = True)
 
 
