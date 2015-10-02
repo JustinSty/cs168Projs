@@ -63,10 +63,10 @@ class DVRouter (basics.DVRouterBase):
         self.table2[dst] = [port, self.table1[port] + cost, 0]
 
       #send table to all neighbours except PORT
-      for tar_dst in self.table2.keys():
+      #for tar_dst in self.table2.keys():
         for tar_port in self.table1.keys():
           if not tar_port == port:
-            p = basics.RoutePacket(tar_dst, self.table2[tar_dst][1])
+            p = basics.RoutePacket(dst, self.table2[dst][1])
             self.send(p, tar_port)
 
     elif isinstance(packet, basics.HostDiscoveryPacket):
