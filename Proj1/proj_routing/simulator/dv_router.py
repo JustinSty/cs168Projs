@@ -73,6 +73,7 @@ class DVRouter (basics.DVRouterBase):
       print('HostDiscoveryPacket')
       self.table2[packet.src] = [port, self.table1[port], 0]    #???
 
+      #send table to all neighbours except PORT
       for tar_dst in self.table2.keys():
         for tar_port in self.table1.keys():
           if not tar_port == port:
@@ -82,7 +83,7 @@ class DVRouter (basics.DVRouterBase):
       # Totally wrong behavior for the sake of demonstration only: send
       # the packet back to where it came from!
       if (packet.dst in self.table2.keys()):
-        self.send(packet, self.table2[packet.dst])
+        self.send(packet, self.table2[packet.dst][0])
       else:
         self.send(packet, port)
 
@@ -98,8 +99,7 @@ class DVRouter (basics.DVRouterBase):
     for dst in self.table2:
       self.table2[dst][2] += self.DEFAULT_TIMER_INTERVAL
       if self.table2[dst][2] >= 15:
-        #expire.append(dst)
-        pass
+        expire.append(dst)
 
     for dst in expire:
       if self.table1[self.table2[dst][0]] == self.table2[dst][1]:
@@ -107,7 +107,7 @@ class DVRouter (basics.DVRouterBase):
       else:
         del self.table2[dst]
 
-      print("del")             
+        #print("del")             
     # send table to all neighbour
 
     for dst in self.table2.keys():
