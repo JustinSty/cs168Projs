@@ -12,7 +12,7 @@ INFINITY = 16
 
 class DVRouter (basics.DVRouterBase):
   #NO_LOG = True # Set to True on an instance to disable its logging
-  #POISON_MODE = True # Can override POISON_MODE here
+  POISON_MODE = True # Can override POISON_MODE here
   #DEFAULT_TIMER_INTERVAL = 5 # Can override this yourself for testing
 
   def __init__ (self):
@@ -24,7 +24,6 @@ class DVRouter (basics.DVRouterBase):
     self.start_timer() # Starts calling handle_timer() at correct rate
     self.neighbour = {} # port:ping to neighbour
     self.table = {} # dst:[port, total cost, time]
-
 
 
   def handle_link_up (self, port, latency):
@@ -43,16 +42,30 @@ class DVRouter (basics.DVRouterBase):
     """
     if port in self.neighbour.keys():
       del self.neighbour[port]
-    remove = []
-    for dst in self.table:
-      if self.table[dst][0] == port:
-        remove.append(dst)
-    for dst in remove:
-      del self.table[dst]
+
+    if self.POISON_MODE:
+      for dst in self.table:
+
+        if self.table[dst][0] == port:
+          #poison table[dst] to a random non-host, with INFINITY cost
+          for tar_dst in self.table.keys():
+            if self.table[tar_dst][0] in self.neighbour.keys() and self.table[tar_dst][1] != self.neighbour[self.table[tar_dst][0]]:
+              self.table[dst] = [self.table[tar_dst][0], INFINITY, self.table[dst][2]]
+              break
+
+    else:
+      remove = []
+      for dst in self.table:
+        if self.table[dst][0] == port:
+          remove.append(dst)
+
+      for dst in remove:
+        del self.table[dst]
 
     for dst in self.table.keys():
       p = basics.RoutePacket(dst, self.table[dst][1])
-      self.send(p, flood=True)
+      if self.table[dst][1] == INFINITY:
+        self.send(p, flood=True)
 
 
   def handle_rx (self, packet, port):
@@ -67,35 +80,46 @@ class DVRouter (basics.DVRouterBase):
     #self.log("RX %s on %s (%s)", packet, port, api.current_time())
     if isinstance(packet, basics.RoutePacket):
       dst = packet.destination
-      cost = packet.latency 
+      cost = packet.latency
+
+      #when receive poison
+      if self.POISON_MODE and cost == INFINITY:
+        for tar_dst in self.table.keys():
+          if self.table[tar_dst][0] == port:
+            self.table[tar_dst] = [self.table[tar_dst][0], INFINITY, self.table[tar_dst][2]]
+            #dont send immediately
+            
+
       #assuming link must be recorded already
       if (dst not in self.table.keys()) or ((self.neighbour[port] + cost) < self.table[dst][1]):
         self.table[dst] = [port, self.neighbour[port] + cost, 0]
 
-      #send table to all neighbours except PORT
-      #for tar_dst in self.table.keys():
+      #send table to all neighbour except PORT
         for tar_port in self.neighbour.keys():
           if not tar_port == port:
             p = basics.RoutePacket(dst, self.table[dst][1])
             self.send(p, tar_port)
 
     elif isinstance(packet, basics.HostDiscoveryPacket):
-      print('HostDiscoveryPacket')
-      self.table[packet.src] = [port, self.neighbour[port], 0]    #???
+      self.table[packet.src] = [port, self.neighbour[port], 0]
 
-      #send table to all neighbours except PORT
+      #send table to all neighbour except PORT
       for tar_dst in self.table.keys():
         for tar_port in self.neighbour.keys():
           if not tar_port == port:
             p = basics.RoutePacket(tar_dst, self.table[tar_dst][1])
             self.send(p, tar_port)
     else:
-      # Totally wrong behavior for the sake of demonstration only: send
-      # the packet back to where it came from!
       if (packet.dst in self.table.keys()):
         self.send(packet, self.table[packet.dst][0])
       else:
-        self.send(packet, port)
+        #if received a PACKET thats has no route in table
+        #send to a random non-host link
+        print("no route")
+        for tar_dst in self.table.keys():
+          if self.table[tar_dst][1] != self.neighbour[self.table[tar_dst][0]]:
+            self.send(packet, self.table[tar_dst][0])
+            break
 
   def handle_timer (self):
     """
@@ -112,17 +136,17 @@ class DVRouter (basics.DVRouterBase):
         expire.append(dst)
 
     for dst in expire:
-      if self.neighbour[self.table[dst][0]] == self.table[dst][1]:
+      if self.table[dst][0] in self.neighbour.keys() and self.neighbour[self.table[dst][0]] == self.table[dst][1]:
         self.table[dst][2] = 0
       else:
         del self.table[dst]
-
-        #print("del")             
-    # send table to all neighbour
-
+            
+    # send table to all neighbour except that using
     for dst in self.table.keys():
-      p = basics.RoutePacket(dst, self.table[dst][1])
-      self.send(p, flood = True)
+        for port in self.neighbour.keys():
+          if not port == self.table[dst][0]:
+            p = basics.RoutePacket(dst, self.table[dst][1])
+            self.send(p, port)
 
 
 

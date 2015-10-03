@@ -59,12 +59,16 @@ class LearningSwitch (api.Entity):
 
     if isinstance(packet, basics.HostDiscoveryPacket):
       # Don't forward discovery messages
+      print('HostDiscoveryPacket')
+      self.table[packet.src] = in_port
       return
 
     if packet.src not in self.table:
       self.table[packet.src] = in_port
+
+    if packet.dst not in self.table:
       # Flood out all ports except the input port
       self.send(packet, in_port, flood=True)
-
-    if packet.dst in self.table.keys():
+    else:
       self.send(packet, self.table[packet.dst])
+
