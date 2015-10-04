@@ -116,10 +116,23 @@ class DVRouter (basics.DVRouterBase):
         #if received a PACKET thats has no route in table
         #send to a random non-host link
         print("no route")
+        sent = 0
+        host_port = []
         for tar_dst in self.table.keys():
-          if self.table[tar_dst][1] != self.neighbour[self.table[tar_dst][0]]:
-            self.send(packet, self.table[tar_dst][0])
+          if self.table[tar_dst][0] in self.neighbour.keys() and self.table[tar_dst][1] == self.neighbour[self.table[tar_dst][0]]:
+            host_port.append(self.table[tar_dst][0])
+
+        for p in self.neighbour.keys():
+          if not p in host_port:
+            self.send(packet, p)
+            sent = 1
+            print("sent")
             break
+
+        if sent == 0:
+          print("send back")
+          self.send(packet, port)
+        print("end")
 
   def handle_timer (self):
     """
@@ -137,10 +150,10 @@ class DVRouter (basics.DVRouterBase):
 
     for dst in expire:
       if self.table[dst][0] in self.neighbour.keys() and self.neighbour[self.table[dst][0]] == self.table[dst][1]:
-        self.table[dst][2] = 0
+        self.table[dst] = [self.table[dst][0], self.table[dst][1], 0]
       else:
         del self.table[dst]
-            
+
     # send table to all neighbour except that using
     for dst in self.table.keys():
         for port in self.neighbour.keys():
