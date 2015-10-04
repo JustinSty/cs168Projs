@@ -115,7 +115,7 @@ class DVRouter (basics.DVRouterBase):
       else:
         #if received a PACKET thats has no route in table
         #send to a random non-host link
-        print("no route")
+        #print("no route")
         sent = 0
         host_port = []
         for tar_dst in self.table.keys():
@@ -126,13 +126,11 @@ class DVRouter (basics.DVRouterBase):
           if not p in host_port:
             self.send(packet, p)
             sent = 1
-            print("sent")
             break
 
         if sent == 0:
           print("send back")
           self.send(packet, port)
-        print("end")
 
   def handle_timer (self):
     """

@@ -80,15 +80,42 @@ def launch ():
     yield 1
     h1.ping(h4)
 
+    yield 1
+    h2.ping(h4)
 
-    yield 5 # Wait five seconds for pings to be delivered
+    yield 1
+    h3.ping(h4)
+
+    yield 1
+    h4.ping(h4)
+
+    yield 1
+    h5.ping(h4)
+
+    yield 1
+    h1.ping(h4)
+
+    yield 1
+    h2.ping(h4)
+
+    yield 1
+    h3.ping(h4)
+
+    yield 1
+    h4.ping(h4)
+
+    yield 1
+    h5.ping(h4)
+
+
+    yield 8 # Wait five seconds for pings to be delivered
 
     good = True
     if h1.pings != 2:
       api.userlog.error("h1 got %s packets instead of 2", h1.pings)
       good = False
-    if h4.pings != 2:
-      api.userlog.error("h4 got %s packets instead of 2", h4.pings)
+    if h4.pings != 11:
+      api.userlog.error("h4 got %s packets instead of 11", h4.pings)
       good = False
     if h5.pings != 1:
       api.userlog.error("h5 got %s packets instead of 1", h5.pings)
