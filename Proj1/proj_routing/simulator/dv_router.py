@@ -134,7 +134,7 @@ class DVRouter (basics.DVRouterBase):
             self.send(packet, p)
             sent = 1
             break
-
+        #should not happen
         if sent == 0:
           print("send back")
           self.send(packet, port)
