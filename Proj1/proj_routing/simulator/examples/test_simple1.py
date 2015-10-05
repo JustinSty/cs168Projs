@@ -114,8 +114,8 @@ def launch ():
     if h1.pings != 2:
       api.userlog.error("h1 got %s packets instead of 2", h1.pings)
       good = False
-    if h4.pings != 11:
-      api.userlog.error("h4 got %s packets instead of 11", h4.pings)
+    if h4.pings != 9:
+      api.userlog.error("h4 got %s packets instead of 9", h4.pings)
       good = False
     if h5.pings != 1:
       api.userlog.error("h5 got %s packets instead of 1", h5.pings)

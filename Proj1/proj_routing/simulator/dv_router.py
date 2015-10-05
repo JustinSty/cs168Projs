@@ -22,9 +22,9 @@ class DVRouter (basics.DVRouterBase):
     You probably want to do some additional initialization here.
     """
     self.start_timer() # Starts calling handle_timer() at correct rate
-    self.neighbour = {} # port:ping to neighbour
-    self.table = {} # dst:[port, total cost, time]
-    self.e_table = {}
+    self.neighbour = {} # port:latency to neighbour
+    self.hosts = [] # port that connects to host
+    self.table = {} # dst:[port, total cost, time, valid_bit]
 
 
   def handle_link_up (self, port, latency):
@@ -33,10 +33,10 @@ class DVRouter (basics.DVRouterBase):
 
     The port attached to the link and the link latency are passed in.
     """
-    self.neighbour[port] = latency;
-    for dst in self.table.keys():
+    self.neighbour[port] = latency
+    for dst in self.table:
       p = basics.RoutePacket(dst, self.table[dst][1])
-      self.send(p, port)
+      self.send(p, port=port)
 
 
   def handle_link_down (self, port):
@@ -45,33 +45,36 @@ class DVRouter (basics.DVRouterBase):
 
     The port number used by the link is passed in.
     """
-    if port in self.neighbour.keys():
+    if port in self.neighbour:
       del self.neighbour[port]
 
-    if self.POISON_MODE:
-      for dst in self.table.keys():
-        if self.table[dst][0] == port:
-          #poison table[dst] to a random non-host, with INFINITY cost
-          p = basics.RoutePacket(dst, INFINITY)
-          self.send(p, flood = True)
-          del self.table[dst]
-          if dst in self.e_table.keys():
-            del self.e_table[dst]
+    expiredEntries = []
+    for dst in self.table:
+      if self.table[dst][0] == port:
+        expiredEntries.append(dst)
 
-    else:
-      remove = []
-      for dst in self.table.keys():
-        if self.table[dst][0] == port:
-          remove.append(dst)
-
-      for dst in remove:
-        del self.table[dst]
-        if dst in self.e_table.keys():
-          del self.e_table[dst]
-
-      for dst in self.table.keys():
-        p = basics.RoutePacket(dst, self.table[dst][1])
+    for dst in expiredEntries:
+      del self.table[dst]
+      if self.POISON_MODE:
+        p = basics.RoutePacket(dst, INFINITY)
         self.send(p, flood=True)
+
+
+  def update(self, dst, port, cost):
+    """
+    Called by self.handle_rx() when a entry in the table need to be updated.
+
+    arguments
+    dst - destination
+    port - from which neighbour
+    cost - latency to destination
+    """
+    self.table[dst] = [port, cost, api.current_time()]
+    p = basics.RoutePacket(dst, cost)
+    self.send(p, port=port, flood=True)
+    if self.POISON_MODE:
+      p = basics.RoutePacket(dst, INFINITY)
+      self.send(p, port=port)
 
 
   def handle_rx (self, packet, port):
@@ -83,61 +86,34 @@ class DVRouter (basics.DVRouterBase):
 
     You definitely want to fill this in.
     """
+    #self.log("RX %s on %s (%s)", packet, port, api.current_time())
     if isinstance(packet, basics.RoutePacket):
       dst = packet.destination
-      cost = packet.latency
-
-      #when receive poison, poison reverse
-      if self.POISON_MODE and cost == INFINITY:
-        for tar_dst in self.table.keys():
-          if self.table[tar_dst][0] == port:
-            self.table[tar_dst] = [self.table[tar_dst][0], INFINITY, self.table[tar_dst][2]]
-
-      #when new route/shortest path established
-      if (dst not in self.table.keys()) or ((self.neighbour[port] + cost) < self.table[dst][1]):
-        self.table[dst] = [port, self.neighbour[port] + cost, 0]
-        p = basics.RoutePacket(dst, self.table[dst][1])
-        self.send(p, port, flood = True)
-
-      #when receive a shortest route became longer
-      if (dst in self.table.keys()) and (self.table[dst][0] == port) and (self.table[dst][1] < cost + self.neighbour[port]):
-        new_cost = cost + self.neighbour[port]
-        self.table[dst] = [port, cost + self.neighbour[port], 0]
-        p = basics.RoutePacket(dst, self.table[dst][1])
-        self.send(p, port, flood = True)
-
+      cost = packet.latency + self.neighbour[port]
+      if packet.latency == INFINITY and self.POISON_MODE:
+        if dst in self.table and self.table[dst][0] == port:
+          del self.table[dst]
+          p = basics.RoutePacket(dst, INFINITY)
+          self.send(p, flood=True)
+      elif dst not in self.table or cost < self.table[dst][1]:
+        self.update(dst, port, cost)
+      # trust neighbour
+      elif port == self.table[dst][0] and cost > self.table[dst][1]:
+        self.update(dst, port, cost)
+      elif port == self.table[dst][0] and cost == self.table[dst][1]:
+        self.table[dst][2] = api.current_time()
 
     elif isinstance(packet, basics.HostDiscoveryPacket):
-      self.table[packet.src] = [port, self.neighbour[port], 0]
-
-      #send whole table to all neighbour except PORT
-      for tar_dst in self.table.keys():
-        p = basics.RoutePacket(tar_dst, self.table[tar_dst][1])
-        self.send(p, port, flood = True)
+      self.hosts.append(port)
+      dst = packet.src
+      cost = self.neighbour[port]
+      self.update(dst, port, cost)
 
     else:
-      if (packet.dst in self.table.keys()):
+      dst = packet.dst
+      if dst in self.table and not self.table[dst][1] == INFINITY and self.table[dst][0] != port:
         self.send(packet, self.table[packet.dst][0])
-      elif (packet.dst in self.e_table.keys()):
-        self.send(packet, self.e_table[packet.dst][0])
-      else:
-        #if received a PACKET thats has no route in table
-        #send to a random non-host link
-        sent = 0
-        host_port = []
-        for tar_dst in self.table.keys():
-          if self.table[tar_dst][0] in self.neighbour.keys() and self.table[tar_dst][1] == self.neighbour[self.table[tar_dst][0]]:
-            host_port.append(self.table[tar_dst][0])
 
-        for p in self.neighbour.keys():
-          if not p in host_port:
-            self.send(packet, p)
-            sent = 1
-            break
-        #should not happen
-        if sent == 0:
-          print("send back")
-          self.send(packet, port)
 
   def handle_timer (self):
     """
@@ -147,28 +123,21 @@ class DVRouter (basics.DVRouterBase):
     not be a bad place to check for whether any entries have expired.
     """
     # check if any entry expire.
-    expire = []
-    for dst in self.table.keys():
-      self.table[dst][2] += self.DEFAULT_TIMER_INTERVAL
-      if self.table[dst][2] >= 15:
-        expire.append(dst)
+    expiredEntries = []
+    for dst in self.table:
+      # leave the entry of host unchanged
+      if self.table[dst][0] not in self.hosts and api.current_time() - self.table[dst][2] >= 15:
+        expiredEntries.append(dst)
+    for dst in expiredEntries:
+      del self.table[dst]
+      if self.POISON_MODE:
+        p = basics.RoutePacket(dst, INFINITY)
+        self.send(p, flood=True)
 
-    for dst in expire:
-      if self.table[dst][0] in self.neighbour.keys() and self.neighbour[self.table[dst][0]] == self.table[dst][1]:
-        self.table[dst] = [self.table[dst][0], self.table[dst][1], 0]
-      else:
-        self.e_table[dst] = [self.table[dst][0], self.table[dst][1]]
-        del self.table[dst]
-
-
-    # send table to all neighbour except that using
-    for dst in self.table.keys():
-        for port in self.neighbour.keys():
-          if not port == self.table[dst][0]:
-            p = basics.RoutePacket(dst, self.table[dst][1])
-            self.send(p, port)
-
-
+    # send table to neighbours.
+    for dst in self.table:
+      p = basics.RoutePacket(dst, self.table[dst][1])
+      self.send(p, port=self.table[dst][0], flood=True)
 
 
 
